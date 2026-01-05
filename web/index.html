@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="">
+<head>
+    <meta charset="utf-8" />
+    <title>CodeBridge - Demo</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 24px }
+        textarea { width: 100%; height: 200px }
+        pre { background:#f6f6f6; padding:12px }
+        .row { display:flex; gap:16px }
+        .col { flex:1 }
+    </style>
+</head>
+<body>
+<h1>CodeBridge — Demo</h1>
+<div>
+    <label>Source language: <input id="source_language" value="python"></label>
+    <label>Target language: <input id="target_language" value="go"></label>
+</div>
+<div>
+    <textarea id="code"># paste code here</textarea>
+</div>
+<button id="send">Translate & Explain</button>
+
+
+<h3>Streaming Output</h3>
+<pre id="out"></pre>
+
+<h3>Upload file</h3>
+<input type="file" id="file" multiple />
+<button id="upload">Upload</button>
+<pre id="uploadRes"></pre>
+
+
+<script>
+    document.getElementById('send').addEventListener('click', async () => {
+        const code = document.getElementById('code').value
+        const source_language = document.getElementById('source_language').value
+        const target_language = document.getElementById('target_language').value
+        const resp = await fetch('/translate', {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({code, source_language, target_language})
+        })
+        const j = await resp.json()
+        const id = j.id
+        const out = document.getElementById('out')
+        out.textContent = ''
+        const es = new EventSource('/translate/stream/'+id)
+        es.onmessage = (e) => {
+            if (e.data === '[DONE]') { es.close(); return }
+            out.textContent += e.data
+        }
+        es.onerror = (e) => { console.error(e); es.close() }
+    })
+
+    document.getElementById('upload').addEventListener('click', async () => {
+        const files = document.getElementById('file').files
+        const fd = new FormData()
+        for (let i=0;i<files.length;i++) fd.append('files', files[i])
+        const r = await fetch('/upload', {method:'POST', body: fd})
+        const j = await r.json()
+        document.getElementById('uploadRes').textContent = JSON.stringify(j, null, 2)
+    })
+</script>
+</body>
+</html>
