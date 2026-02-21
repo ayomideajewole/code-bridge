@@ -42,6 +42,15 @@ type GeminiConfig struct {
 	APIKey string
 }
 
+func validateRequiredEnvs(v *viper.Viper, requiredEnvs []string) error {
+	for _, env := range requiredEnvs {
+		if v.GetString(env) == "" {
+			return fmt.Errorf("%s is required", env)
+		}
+	}
+	return nil
+}
+
 // LoadConfig reads configuration from environment variables
 func LoadConfig() (*Config, error) {
 	v := viper.New()
@@ -57,6 +66,19 @@ func LoadConfig() (*Config, error) {
 		if !errors.As(err, &configFileNotFoundError) {
 			return nil, err
 		}
+	}
+
+	requiredEnvs := []string{
+		"DB_NAME",
+		"DB_HOST",
+		"DB_PORT",
+		"DB_USER",
+		"DB_PASSWORD",
+		"DB_SSLMODE",
+	}
+
+	if err := validateRequiredEnvs(v, requiredEnvs); err != nil {
+		return nil, err
 	}
 
 	config := &Config{
@@ -80,26 +102,6 @@ func LoadConfig() (*Config, error) {
 		Gemini: GeminiConfig{
 			APIKey: v.GetString("GEMINI_API_KEY"),
 		},
-	}
-
-	// Validate required database fields
-	if config.Database.Name == "" {
-		return nil, errors.New("DB_NAME is required")
-	}
-	if config.Database.Host == "" {
-		return nil, errors.New("DB_HOST is required")
-	}
-	if config.Database.Port == "" {
-		return nil, errors.New("DB_PORT is required")
-	}
-	if config.Database.User == "" {
-		return nil, errors.New("DB_USER is required")
-	}
-	if config.Database.Password == "" {
-		return nil, errors.New("DB_PASSWORD is required")
-	}
-	if config.Database.SSLMode == "" {
-		return nil, errors.New("DB_SSLMODE is required")
 	}
 
 	// Set default values for server if not provided
