@@ -51,8 +51,21 @@ func (s *GinServer) SetupRoutes() {
 		})
 	})
 
-	s.router.StaticFile("/web", "./web/index.html")
-	s.router.Static("/static", "web/static")
+	// Serve web interface with no-cache headers
+	s.router.GET("/web", func(c *gin.Context) {
+		c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
+		c.Header("Pragma", "no-cache")
+		c.Header("Expires", "0")
+		c.File("./web/index.html")
+	})
+
+	// Serve static files with no-cache headers
+	s.router.GET("/static/*filepath", func(c *gin.Context) {
+		c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
+		c.Header("Pragma", "no-cache")
+		c.Header("Expires", "0")
+		c.File("./web" + c.Request.URL.Path)
+	})
 
 	s.router.GET("/health", s.HealthCheck)
 	s.router.POST("/translate", s.TranslateCode)
@@ -146,15 +159,6 @@ func (s *GinServer) TranslateCode(c *gin.Context) {
 		return
 	}
 
-	// Set headers for SSE
-	//c.Header("Content-Type", "text/event-stream")
-	//c.Header("Cache-Control", "no-cache")
-	//c.Header("Connection", "keep-alive")
-	//c.Header("X-Accel-Buffering", "no")
-
-	// Get the response writer
-	//w := c.Writer
-
 	s.logger.Info("translation request",
 		zap.String("source_language", req.SourceLanguage),
 		zap.String("target_language", req.TargetLanguage),
@@ -167,29 +171,33 @@ func (s *GinServer) TranslateCode(c *gin.Context) {
 	// create channel for streaming
 	s.sseHub.Create(id)
 
+	s.logger.Info("translation job created", zap.String("id", id))
+	c.JSON(http.StatusAccepted, gin.H{"id": id})
+
 	// call translator in background
 	go func() {
-		ctx := context.Background()
+		// Use a timeout context
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer cancel()
+
+		time.Sleep(100 * time.Millisecond)
+
+		s.logger.Info("starting translation", zap.String("id", id))
+
 		// translator will push messages to hub via callback
 		er := s.services.CodeTranslatorService.TranslateCode(ctx, req.Code, req.SourceLanguage, req.TargetLanguage, func(chunk string) error {
+			s.logger.Debug("sending chunk", zap.String("id", id), zap.Int("chunk_size", len(chunk)))
 			return s.sseHub.Send(id, chunk)
 		})
 		if er != nil {
+			s.logger.Error("translation error", zap.String("id", id), zap.Error(er))
 			_ = s.sseHub.Send(id, fmt.Sprintf("ERROR: %v", er))
 		}
-		// signal end
-		_ = s.sseHub.Send(id, "__STREAM_END__")
+		// Always signal end, even on error
+		s.logger.Info("translation finished, sending end signal", zap.String("id", id))
+		_ = s.sseHub.Send(id, "[DONE]")
+		s.logger.Info("translation completed", zap.String("id", id))
 	}()
-
-	// Simulate streaming translation (placeholder for OpenAI/Gemini API)
-	// In production, this would call the actual AI API
-	//translatedCode := s.simulateTranslation(req, w)
-	//
-	//// Send final event
-	//fmt.Fprintf(w, "data: %s\n\n", translatedCode)
-	//w.Flush()
-	c.JSON(http.StatusAccepted, gin.H{"id": id})
-	s.logger.Info("translation completed", zap.String("id", id))
 }
 
 // StreamHandler attaches client to SSE stream
@@ -200,8 +208,13 @@ func (s *GinServer) StreamHandler(c *gin.Context) {
 		return
 	}
 
+	s.logger.Info("client connecting to stream", zap.String("id", id))
+
 	client := s.sseHub.AddClient(id)
-	defer s.sseHub.RemoveClient(id, client)
+	defer func() {
+		s.logger.Info("client disconnecting from stream", zap.String("id", id))
+		s.sseHub.RemoveClient(id, client)
+	}()
 
 	c.Writer.Header().Set("Content-Type", "text/event-stream")
 	c.Writer.Header().Set("Cache-Control", "no-cache")
@@ -210,26 +223,42 @@ func (s *GinServer) StreamHandler(c *gin.Context) {
 
 	flusher, ok := c.Writer.(http.Flusher)
 	if !ok {
+		s.logger.Error("streaming not supported")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "streaming unsupported"})
 		return
 	}
+
+	// Send initial connection message to establish the stream
+	fmt.Fprintf(c.Writer, ": connected\n\n")
+	flusher.Flush()
+
+	s.logger.Info("stream established", zap.String("id", id))
 
 	// send existing backlog (if any)
 	for {
 		select {
 		case msg, ok := <-client.Ch:
 			if !ok {
+				s.logger.Info("client channel closed", zap.String("id", id))
 				return
 			}
-			if msg == "__STREAM_END__" {
-				fmt.Fprintf(c.Writer, "data: %s\n\n", "[DONE]")
-				flusher.Flush()
-				return
-			}
-			// write SSE event
+
+			// Log what we're sending
+			s.logger.Debug("sending message to client",
+				zap.String("id", id),
+				zap.String("msg_preview", msg[:min(len(msg), 50)]))
+
+			// Send the message as-is (including [DONE])
 			fmt.Fprintf(c.Writer, "data: %s\n\n", msg)
 			flusher.Flush()
+
+			// Check if this is the end signal
+			if msg == "[DONE]" {
+				s.logger.Info("stream end signal sent to client", zap.String("id", id))
+				return
+			}
 		case <-c.Request.Context().Done():
+			s.logger.Info("client context cancelled", zap.String("id", id))
 			return
 		}
 	}
