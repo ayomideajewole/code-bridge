@@ -7,26 +7,14 @@ CodeBridge is a production-ready Go service that translates code between program
 [![Go Version](https://img.shields.io/badge/Go-1.24+-00ADD8?style=flat&logo=go)](https://golang.org/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-## ✨ Features
+## Features
 
-- 🔄 **Multi-Provider Support** - Switch between OpenAI and Google Gemini
-- 📡 **Real-time Streaming** - SSE-based streaming for live translation updates
-- 🏗️ **Clean Architecture** - Modular design with dependency injection
-- 🔌 **Provider Factory Pattern** - Easily add new AI providers
-- 📊 **Database Integration** - PostgreSQL support with Bun ORM
-- 🚀 **Production Ready** - Graceful shutdown, structured logging, health checks
-- 🎯 **Type-Safe** - Strongly typed Go with clear interfaces
+-  **Multi-Provider Support** - Switch between multiple LLM providers with a factory pattern
+-  **Real-time Streaming** - SSE-based streaming for live translation updates
+- ️ **Clean Architecture** - Modular design with dependency injection
+-  **Provider Factory Pattern** - Easily add new AI providers
 
-## 📋 Table of Contents
-
-- [Quick Start](#-quick-start)
-- [Architecture](#-architecture)
-- [API Reference](#-api-reference)
-- [Configuration](#-configuration)
-- [Development](#-development)
-- [Deployment](#-deployment)
-
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 
@@ -95,13 +83,17 @@ curl http://localhost:6777/translate/stream/job-1704412800000000000
 
 **SSE Stream Output:**
 ```
-data: function hello() {
-data:   console.log("Hello");
-data: }
+: connected
+data: {"type":"explanation","content":"<content>","delta":true}
+...
+data: {"type":"notes","content":"<content>"}
+...
+data: {"type":"code","content":"<content>","delta":true}
+...
 data: [DONE]
 ```
 
-## 🏗️ Architecture
+## Architecture
 
 ### Project Structure
 
@@ -191,7 +183,7 @@ translatorService.TranslateCode(
 )
 ```
 
-## 📡 API Reference
+## API Reference
 
 ### Endpoints
 
@@ -238,7 +230,7 @@ data: [DONE]
 #### `GET /web`
 Demo web interface
 
-## ⚙️ Configuration
+## Configuration
 
 ### Environment Variables
 
@@ -256,15 +248,7 @@ provider, err := providerFactory.CreateProvider(translator_provider.ProviderOpen
 provider, err := providerFactory.CreateProvider(translator_provider.ProviderGemini)
 ```
 
-### Logging
-
-Configured via `LOG_LEVEL` environment variable:
-- `debug` - Detailed debugging information
-- `info` - General informational messages (default)
-- `warn` - Warning messages
-- `error` - Error messages only
-
-## 🛠️ Development
+## Development
 
 ### Available Commands
 
@@ -272,7 +256,6 @@ Configured via `LOG_LEVEL` environment variable:
 make build      # Build the application
 make run        # Build and run
 make dev        # Run without building (hot reload with air/reflex)
-make test       # Run tests
 make clean      # Clean build artifacts
 make deps       # Download dependencies
 make tidy       # Tidy and verify dependencies
@@ -307,44 +290,7 @@ case ProviderNewProvider:
     return newprovider.NewClient(config.NewProvider)
 ```
 
-### Testing
-
-Run the test suite:
-```bash
-go test -v ./...
-```
-
-Run with coverage:
-```bash
-go test -cover -coverprofile=coverage.out ./...
-go tool cover -html=coverage.out
-```
-
-## 📦 Deployment
-
-### Docker
-
-```dockerfile
-FROM golang:1.24-alpine AS builder
-WORKDIR /app
-COPY . .
-RUN go build -o code-bridge cmd/server/main.go
-
-FROM alpine:latest
-RUN apk --no-cache add ca-certificates
-WORKDIR /root/
-COPY --from=builder /app/code-bridge .
-EXPOSE 6777
-CMD ["./code-bridge"]
-```
-
-### Build for Production
-
-```bash
-CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o code-bridge cmd/server/main.go
-```
-
-## 📚 Key Dependencies
+## Key Dependencies
 
 - **[Gin](https://github.com/gin-gonic/gin)** - HTTP web framework
 - **[Zap](https://github.com/uber-go/zap)** - Structured logging
@@ -353,14 +299,14 @@ CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o code-bridge cmd/serve
 - **[OpenAI Go SDK](https://github.com/openai/openai-go)** - OpenAI integration
 - **[Google Generative AI](https://pkg.go.dev/google.golang.org/genai)** - Gemini integration
 
-## 📄 License
+## License
 
 MIT License - see [LICENSE](LICENSE) file for details
 
-## 🤝 Contributing
+## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
-## 📧 Support
+## Support
 
 For issues and questions, please use the [GitHub Issues](https://github.com/ayomideajewole/code-bridge/issues) page.
