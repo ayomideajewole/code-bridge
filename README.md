@@ -222,7 +222,12 @@ Stream translation results via SSE
 
 **Response:** Server-Sent Events stream
 ```
-data: <chunk>
+: connected
+data: {"type":"explanation","content":"<content>","delta":true}
+...
+data: {"type":"notes","content":"<content>"}
+...
+data: {"type":"code","content":"<content>","delta":true}
 ...
 data: [DONE]
 ```
